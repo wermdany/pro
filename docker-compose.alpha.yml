@@ -1,0 +1,21 @@
+version: '3'
+
+# Admin
+services:
+  # web
+  web:
+    image: ${TEST_IMAGE}
+    restart: always
+    volumes:
+      - ${DATA_DIR}/logs/:/var/log/nginx
+    networks:
+      - qzpublic
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.${PROJECT_NAME}.rule=Host(`cashier-ycx-alpha.demo.qizhit.com`)"
+      - "traefik.http.routers.${PROJECT_NAME}.entrypoints=websecure"
+      - "traefik.http.routers.${PROJECT_NAME}.tls=true"
+
+networks:
+  qzpublic:
+    external: true

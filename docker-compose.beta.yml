@@ -1,0 +1,21 @@
+version: '3'
+
+# Admin
+services:
+  # web
+  web:
+    image: ${BETA_IMAGE}
+    restart: always
+    volumes:
+      - ${DATA_DIR_BETA}/logs/:/var/log/nginx
+    networks:
+      - qzpublic
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.${PROJECT_NAME_BETA}.rule=Host(`cashier-ycx-beta.demo.qizhit.com`)"
+      - "traefik.http.routers.${PROJECT_NAME_BETA}.entrypoints=websecure"
+      - "traefik.http.routers.${PROJECT_NAME_BETA}.tls=true"
+
+networks:
+  qzpublic:
+    external: true

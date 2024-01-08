@@ -1,0 +1,134 @@
+image: docker:latest
+
+services:
+  - name: docker:dind
+    command: ["--registry-mirror=https://a14vfcub.mirror.aliyuncs.com"]
+    alias: docker
+
+stages:
+  - build
+  - release
+  - deploy
+
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+  TEST_IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME
+  RELEASE_IMAGE: $CI_REGISTRY_IMAGE:latest
+  BETA_IMAGE: $CI_REGISTRY_IMAGE:beta
+
+  PROJECT_NAME: "ycx-cashier-fe"
+  BASE_DIR: "/mnt/projects/ycx"
+  PROD_DIR: "$BASE_DIR/cashier-fe"
+  TEMP_DIR: "$BASE_DIR/cashier-fe-temp"
+  DATA_DIR: "$BASE_DIR/cashier-fe-data"
+  OLD_DIR: "$BASE_DIR/cashier-fe-old"
+
+  PROJECT_NAME_BETA: "ycx-cashier-fe-beta"
+  BASE_DIR_BETA: "/mnt/projects/ycx-beta"
+  PROD_DIR_BETA: "$BASE_DIR_BETA/cashier-fe"
+  TEMP_DIR_BETA: "$BASE_DIR_BETA/cashier-fe-temp"
+  DATA_DIR_BETA: "$BASE_DIR_BETA/cashier-fe-data"
+  OLD_DIR_BETA: "$BASE_DIR_BETA/cashier-fe-old"
+
+before_script:
+  - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+
+# Build Docker Image
+build:
+  stage: build
+  tags:
+    - docker
+  except:
+    - tags
+#  only:
+#    - tags
+  script:
+    - docker build -f ./alpha.Dockerfile --pull -t $TEST_IMAGE .
+    - docker push $TEST_IMAGE
+
+# Release Docker Image
+release:
+  stage: release
+  tags:
+    - docker
+  only:
+    - main
+  except:
+    - tags
+  script:
+    - docker pull $TEST_IMAGE
+    - docker tag $TEST_IMAGE $RELEASE_IMAGE
+    - docker push $RELEASE_IMAGE
+
+# Deploy Alpha
+deploy_alpha:
+  stage: deploy
+  tags:
+    - shell
+  except:
+    - tags
+  script:
+    # Copy to TEMP DIR
+    - rm -rf $TEMP_DIR
+    - mkdir -p $TEMP_DIR
+    - cp -fr ./docker-compose.alpha.yml $TEMP_DIR
+    # Stop && Rename OLD PROD
+    - if [ -f "$PROD_DIR/docker-compose.alpha.yml" ];
+      then
+      docker-compose -f $PROD_DIR/docker-compose.alpha.yml -p $PROJECT_NAME down --rmi all;
+      fi
+    - if [ -d "$PROD_DIR" ];
+      then
+      mv $PROD_DIR $OLD_DIR;
+      fi
+    # Move NEW PROD
+    - mv $TEMP_DIR $PROD_DIR
+    # Start NEW PROD
+    - docker-compose -f $PROD_DIR/docker-compose.alpha.yml -p $PROJECT_NAME up -d
+    # Remove OLD PROD
+    - if [ -d "$OLD_DIR" ];
+      then
+      rm -rf $OLD_DIR;
+      fi
+
+# ======= Beta Deploy  =======
+build_beta:
+  stage: build
+  tags:
+    - docker
+  only:
+    - tags
+  script:
+    - docker build -f ./beta.Dockerfile --pull -t $BETA_IMAGE .
+    - docker push $BETA_IMAGE
+
+deploy_beta:
+  stage: deploy
+  tags:
+    - shell
+  only:
+    - tags
+  script:
+    # Copy to TEMP DIR
+    - rm -rf $TEMP_DIR_BETA
+    - mkdir -p $TEMP_DIR_BETA
+    - cp -fr ./docker-compose.beta.yml $TEMP_DIR_BETA
+    # Stop && Rename OLD PROD
+    - if [ -f "$PROD_DIR_BETA/docker-compose.beta.yml" ];
+      then
+      docker-compose -f $PROD_DIR_BETA/docker-compose.beta.yml -p $PROJECT_NAME_BETA down --rmi all;
+      fi
+    - if [ -d "$PROD_DIR_BETA" ];
+      then
+      mv $PROD_DIR_BETA $OLD_DIR_BETA;
+      fi
+    # Move NEW PROD
+    - mv $TEMP_DIR_BETA $PROD_DIR_BETA
+    # Start NEW PROD
+    - docker-compose -f $PROD_DIR_BETA/docker-compose.beta.yml -p $PROJECT_NAME_BETA up -d
+    # Remove OLD PROD
+    - if [ -d "$OLD_DIR_BETA" ];
+      then
+      rm -rf $OLD_DIR_BETA;
+      fi
